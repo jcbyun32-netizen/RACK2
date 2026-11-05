@@ -169,26 +169,34 @@ async function startInspect(){
 // 숫자패드 입력 상태: 부호 + 정수부(0/1) + 소수 2자리. 소수점은 자동.
 let K = { neg:false, ip:null, dec:'' };
 function kReset(){ K = { neg:false, ip:null, dec:'' }; }
+const isDeg = () => S.mode==='deg' && !!S.base;
+const decPlaces = () => isDeg() ? 3 : 2;                 // 소수 자릿수: mm 2자리 / ° 3자리
 const cents = (ip,dec) => ip*100 + Number((dec+'00').slice(0,2));
+const degVal = (ip,dec) => ip + Number((dec+'000').slice(0,3))/1000;
 function nextState(d){
   let ip = K.ip, dec = K.dec;
-  if(ip===null){ if(d<=1){ ip = d; } else { ip = 0; dec = String(d); } }   // 2~9 → 0.d (정수부 0 자동)
-  else if(dec.length<2){ dec += d; }
+  if(ip===null){
+    if(isDeg()){
+      // °: 0이면 정수부 0, 1은 1°가 허용될 때만 정수부(기준길이가 아주 짧을 때), 그 외는 0.d (정수부 0 자동)
+      if(d===0 || (d===1 && Math.round(S.base*Math.tan(Math.PI/180)*100) <= LIMIT)){ ip = d; }
+      else { ip = 0; dec = String(d); }
+    } else if(d<=1){ ip = d; } else { ip = 0; dec = String(d); }   // 2~9 → 0.d (정수부 0 자동)
+  }
+  else if(dec.length<decPlaces()){ dec += d; }
   else return null;
   return {ip,dec};
 }
 // 입력값(센트 단위) → mm 센트. ° 모드: mm = 기준길이 × tan(각도)
 function mmCents(ip,dec){
-  const raw = cents(ip,dec);
-  if(S.mode!=='deg' || !S.base) return raw;
-  return Math.round(S.base * Math.tan(raw/100*Math.PI/180) * 100);
+  if(!isDeg()) return cents(ip,dec);
+  return Math.round(S.base * Math.tan(degVal(ip,dec)*Math.PI/180) * 100);
 }
 function digitOk(d){ const n = nextState(d); return !!n && mmCents(n.ip,n.dec) <= LIMIT; }
 function pressDigit(d){
   const n = nextState(d);
   if(!n || mmCents(n.ip,n.dec) > LIMIT){ vib(); return; }   // ±1.85 이상 잠금
   K.ip = n.ip; K.dec = n.dec;
-  if(K.dec.length===2) commit(); else render();
+  if(K.dec.length===decPlaces()) commit(); else render();
 }
 function pressSign(){ K.neg = !K.neg; render(); }
 function pressBack(){
@@ -266,7 +274,7 @@ function renderInspect(){
     cells += `<button onclick="jump(${idx(m,s,i)})" class="cl rounded-lg border text-center ${i===c?'cell-on':''} ${v===null?'bg-white border-slate-300':'border-transparent text-white'}" style="${v!==null?'background:'+vcolor(v):''}"><div class="text-[11px] ${v===null?'text-slate-400':'text-white/80'}">${RACKS[i]}단</div><div class="text-base font-extrabold leading-none">${fmt(v)||'·'}</div></button>`;
   }
   const deg = S.mode==='deg' && !!S.base;
-  const typed = (K.neg?'−':'+') + (K.ip===null?'_':K.ip) + '.' + (K.dec+'__').slice(0,2) + (deg?'°':'');
+  const typed = (K.neg?'−':'+') + (K.ip===null?'_':K.ip) + '.' + (K.dec+'___').slice(0,decPlaces()) + (deg?'°':'');
   const mBtn = (m,l) => `<button onclick="setMode('${m}')" style="min-width:4.2rem;height:2.8rem;padding:0 .9rem;border-radius:.75rem;font-size:1.35rem;font-weight:900;border:2px solid ${(m==='deg')===deg?'transparent':'#cbd5e1'};background:${(m==='deg')===deg?'var(--brand)':'#fff'};color:${(m==='deg')===deg?'#fff':'#64748b'}">${l}</button>`;
   const prevMm = (K.ip!==null) ? (K.neg?'−':'+') + (mmCents(K.ip,K.dec)/100).toFixed(2) + ' mm' : '— mm';
   const dispLeft = `<div style="display:flex;flex-direction:column;gap:.25rem;min-width:0"><div style="display:flex;gap:.4rem">${mBtn('mm','mm')}${mBtn('deg','°')}</div>` + (deg
@@ -290,7 +298,7 @@ function renderInspect(){
     </section>
     <section class="a-disp box">
       ${dispLeft}
-      <div class="dv" style="color:${K.neg?'#f97316':'var(--ink)'}">${typed}</div>
+      <div class="dv" style="color:${K.neg?'#f97316':'var(--ink)'}${deg?';font-size:clamp(1.9rem,calc(var(--app-h,100vh)*.055),2.8rem)':''}">${typed}</div>
     </section>
     <div class="a-pad">
       <div class="keys">
